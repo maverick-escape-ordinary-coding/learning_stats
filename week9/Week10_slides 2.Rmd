@@ -1,0 +1,217 @@
+---
+title: "Introduction to Regression Modelling"
+author: "Deirdre Toher"
+date: "Week 10: coefficient estimation"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      countIncrementalSlides: false
+---
+
+<style type="text/css">
+.remark-slide-content {
+    font-size: 25px;
+    padding: 1em 4em 1em 4em;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(comment = NA)
+xaringanExtra::use_xaringan_extra(c("tile_view", "animate_css", "tachyons"))
+library(knitr)
+library(kableExtra)
+library(ggplot2)
+library(patchwork)
+library(dplyr)
+library(equatiomatic)
+library(performance)
+```
+
+```{r}
+xaringanExtra::use_webcam(width = 350, height = 350)
+```
+
+
+```{css, echo=F}
+    /* Table width = 100% max-width */
+
+    .remark-slide table{
+        width: 100%;
+    }
+
+    /* Change the background color to white for shaded rows (even rows) */
+
+    .remark-slide thead, .remark-slide tr:nth-child(2n) {
+        background-color: white;
+    }
+```
+
+
+# Goals:
+
+1. Understand the terminology of linear regression. 
+2. Understand some of the model assumptions.
+3. Assess model performance of a simple linear regression.
+4. Variable selection techniques - an overview.
+5. Including categorical variables in the model.
+6. Use of bootstrap methods to produce estimates of coefficients.
+
+---
+
+
+# Linear Model
+
+Our multiple linear regression model is:
+
+$$y_{i} = \beta_{0}+\beta_{1}x_{1i}+\beta_{2}x_{2i}+\ldots+\beta_{k}x_{ki}+\gamma_{1}z_{1i}+\ldots+\gamma_{l}z_{li}+\epsilon_{i}$$
+
+The residuals / errors, denoted above by $\epsilon$ represent how far the point is from the fitted line.
+
+We now have $(k+l+1)$ parameters to estimate. The indicator variables are denoted by `z`.  
+
+---
+
+# Indicator Variables
+
+AKA: dummy variables, one-hot-encoding
+
+Start with a categorical variable with **c** categories. You require **(c-1)** (0,1) variables to encode this in numeric form for regression.
+
+If observation *i* is in category A, then the first indicator variable would be 1 and the remaining ones would be 0.
+
+
+---
+
+# Parallel lines?
+
+Putting in a regression line
+
+$$\hat{y}_{i}=\beta_{0}+\sum_{j=1}^{k}\beta_{j}x_{ji}+\sum_{m=1}^{l}z_{mi}$$
+
+is the same as a series of parallel lines - the indicator variables adjust the intercept.
+
+To change the slope, you need to multiply these explanatory variables by one another (i.e. a set of indicator variables by another explanatory variable)
+
+- This requires lots of coefficients to be estimated, so think before you act here!
+
+---
+
+# Example
+
+```{r, echo=FALSE, message=FALSE, error=FALSE}
+Baseball<-read.csv("data/input.csv",stringsAsFactors = TRUE)
+rownames(Baseball)<-Baseball[,1]
+Baseball<-Baseball[,-1]
+
+Baseball$LnSalary<-log(Baseball$Salary)
+Baseball$LnCRuns<-log(Baseball$CRuns)
+Baseball$LnCRBI<-log(Baseball$CRBI)
+```
+
+```{r}
+# DivE - Reference Cat
+# 2.32+4.7*natural lo + 0.27 * natLog
+model <- lm(LnSalary ~ LnCRBI + LnCRuns + League + Division, data=Baseball)
+modelA<-update(model,.~.+League*LnCRBI)
+coefficients(summary(modelA))
+```
+
+---
+
+# Assumptions
+
+So either consider:
+
+1. Normality
+  - The residuals are normally distributed with a mean of zero and a constant variance
+  - The value of the dependent variable is normally distributed with the mean value $\beta_{0}+\sum_{j=1}^{k}\beta_{j}x_{ji}+\sum_{m=1}^{l}z_{mi}$ and a constant variance.
+2. Residuals should be independent of one another.
+3. Explanatory variables should not be (too) correlated with one another.
+
+---
+
+# Variable Selection
+
+Suppose you have a lot of potential variables: 
+
+- How do you pick which to include?
+
+- How to evaluate model performance (without 'double dipping')?
+
+---
+
+## Criteria for adding variables
+
+- AIC / BIC are information criteria
+  - balance model fit versus complexity
+- Size of coefficients
+  - need to compare on standardised variables
+  - referred to as regularisation methods (LASSO / Ridge)
+  
+---
+
+# Lasso - L1 regularisation
+
+Have a complexity penalty $\lambda$ which requires selection. May be done by cross validation **within your training sample**
+
+**Lasso** (L1 regularisation)
+
+$$\text{Loss function}  = \text{argmin}_{\hat{\beta}}\left(||Y-\beta\times X||^{2} + \lambda \times ||\beta_{j}||_{1}\right)$$ 
+  
+tends to give sparse weights (mostly zeros), because the l1 regularization cares equally about driving down big weights to small weights, or driving small weights to zeros.
+  
+---
+
+# Recall: Bootstrapping
+
+- Sampling with replacement!
+
+- Previously: used to construct confidence intervals for the mean / median etc when assumption of normality not appropriate.
+
+- Now: can be used to construct confidence intervals of coefficient estimates when the model assumptions may not be well met.
+
+
+---
+
+# Today's class
+
+- continue on the baseball data from last week
+  - you can work from DT's partial solutions on blackboard.
+
+- introduce categorical variables into your model
+  - expand exploratory data analysis to include the categorical variables
+
+- create bootstrap estimates for your coefficients
+  - Create a version from first principles that doesn't require another package!
+  - Also try to use the 'boot' package (it isn't much easier!)
+<https://www.statmethods.net/advstats/bootstrapping.html>
+
+---
+
+# Example code
+
+```{r, eval=FALSE,echo==TRUE}
+Baseball<-read.csv("data/input.csv",stringsAsFactors=TRUE)
+rownames(Baseball)<-Baseball[,1]
+Baseball<-Baseball[,-1]
+
+Baseball$LnSalary<-log(Baseball$Salary)
+Baseball$LnCRuns<-log(Baseball$CRuns)
+Baseball$LnCRBI<-log(Baseball$CRBI)
+
+set.seed(3244)
+n <- nrow(Baseball)
+B <- 1000 # Number of bootstrap samples
+bstar <-matrix(NA,nrow=B,ncol=5) # Rows of bstar will be bootstrap vectors of regression coefficients.
+betaHat<-coef(lm(LnSalary ~ LnCRBI + LnCRuns + League + Division, data=Baseball))
+ 
+for(d in 1:B){
+# Randomly sample from the rows of baseball, with replacement
+Dstar <- Baseball[sample(1:n,size=n,replace=T),]
+model <- lm(LnSalary ~ LnCRBI + LnCRuns + League + Division, data=Dstar)
+bstar[d,] <- coef(model) 
+  }
+colnames(bstar)<-names(coef(model))
+```

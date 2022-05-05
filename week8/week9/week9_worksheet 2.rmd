@@ -1,0 +1,149 @@
+---
+title: "Week 9: worksheet"
+author: "Practical"
+date: "20 April 2021"
+output: html_document
+
+requirement:
+  a model picked out for AIC, BIC, 
+---
+library("readxl")
+library("dplyr")
+library("ggplot2")
+library('MASS')
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Read in your data
+
+
+```{r }
+my_data <- read_excel("input.xlsx")
+```
+
+## Exploratory Data Analysis
+
+
+```{r }
+
+
+summary(my_data)
+
+```
+
+
+# Explaining Salary!
+
+In the following models, you are aiming to explain the variation in salary.
+
+## One explanatory variable
+
+ggplot(data = my_data) +
+  geom_bar(mapping = aes(x = Salary))
+
+ggplot(data = my_data, mapping = aes(x = Salary)) +
+  geom_histogram(binwidth = 0.1)
+
+# Clean Data
+my_data = my_data[,-1]
+sum(is.na(my_data))
+my_data = na.omit(my_data)
+# Split your data into a training set and a test set
+
+# Setting 80% sample size
+smp_size <- floor(0.80 * nrow(my_data))
+
+## set the seed to make your partition reproducible
+set.seed(100)
+train_ind <- sample(seq_len(nrow(my_data)), size = smp_size)
+
+train <- mtcars[train_ind, ]
+test <- mtcars[-train_ind, ]
+
+## Using AIC to pick variables
+
+mLR = lm(mpg ~, )
+stepAIC()
+
+**Hint: try using the stepAIC function in the MASS package** 
+
+## Using BIC to pick variables
+
+**Hint: try using the stepAIC function in the MASS package, but change the penalty term (k) so that it is log(n) where n is your number of non-missing rows of data**
+
+## Regularisation methods
+
+**You will need to install the `glmnet` package.**
+
+If you have already configured your data (in the example code below, this is called `Baseball`) so that the names of the players are stored as rownames, not as a separate variable, you will need to configure your data as follows so that it can be used by the glmnet function.
+
+Adapt the code so that it does this for your training and test data.
+
+```{r}
+x <- model.matrix(Salary~., Baseball)
+x
+x<-x[,-1] 
+# trim off the first column
+                                         # leaving only the predictors
+y <- Baseball %>%
+  dplyr:::select(Salary) %>%
+  unlist() %>%
+  as.numeric()
+
+grid <- 10^seq(10, -2, length = 100)
+ridge_mod <- glmnet(x, y, alpha = 0, lambda = grid) # ridge model
+
+
+```
+
+
+```{r}
+ridge_mod_train <- glmnet(x_train, y_train, alpha=0, lambda = grid, thresh = 1e-12)
+
+```
+
+```{r}
+ridge_pred <- predict(ridge_mod_train, s = 4, newx = x_test) # here lambda = 4 (specified)
+mean((ridge_pred - y_test)^2)
+```
+
+
+```{r crossvalidationRidge}
+set.seed(1)
+cv.out <- cv.glmnet(x_train, y_train, alpha = 0) # Fit ridge regression model on training data
+bestlam <- cv.out$lambda.min  # Select lambda that minimizes training MSE
+bestlam
+ridge_pred <- predict(ridge_mod_train, s = bestlam, newx = x_test) # Use best lambda to predict test data
+mean((ridge_pred - y_test)^2) # Calculate test MSE
+```
+
+## LASSO
+For the lasso, use the glmnet functions, but specify that $\alpha$ = 1.
+
+The following code runs the LASSO method for the full dataset. How would you turn this into something that has parameters for $\lambda$ picked by cross validation? *Hint, see the ridge regression example*.
+
+
+```{r}
+lasso.mod <- glmnet(x, y, alpha = 1, lambda = grid) # Fit lasso model on full dataset
+lasso_coef <- predict(lasso.mod, type = "coefficients", s = bestlam)[1:20,] # Display coefficients using lambda chosen by CV
+lasso_coef
+
+lasso_coef[lasso_coef != 0] # Display only non-zero coefficients
+```
+
+
+Look at your non-zero coefficients for the LASSO model. Fit a multiple linear regression model just using these variables and then formally compare models selected using:
+
+1. AIC
+2. BIC
+3. LASSO
+
+using the performance library.
+
+Recall the function: `compare_performance`.
+
+For your selected model; evaluate it in terms of the model assumptions. 
+
+What, if any, concerns have you about your chosen model?
+

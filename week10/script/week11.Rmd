@@ -1,0 +1,79 @@
+---
+title: "Week 11: summary"
+author: "Practical"
+date: "4 May 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE, warning=FALSE, eval=TRUE}
+FBook<-read.csv("../data/dataset_Facebook_v2.csv", stringsAsFactors = FALSE)
+source("../mypackages.R")
+source("../helperFunctions.R")
+```
+
+
+```{r}
+str(FBook)
+colnames(FBook)
+```
+
+
+```{r}
+FBook$Post.Weekday<-as.factor(FBook$Post.Weekday)
+```
+
+```{r}
+with(FBook,table(Type,Post.Weekday))
+```
+
+
+From this:
+- may want to have Photo as the reference level of "Type" (of post) as it is the most numerous
+
+```{r}
+FBook$Type<-relevel(as.factor(FBook$Type),ref="Photo")
+```
+
+
+If all in the same calendar year, then months may be treated as an ordinal variable.
+
+Why may you want to create a new variable for this?
+
+```{r}
+FBook$Month<-factor(FBook$Post.Month,ordered = TRUE, levels=1:12)
+```
+
+
+You Want to model the number of Lifetime post consumers using the available information.
+
+Create a plan and work out how to implement this in R!
+
+
+Want to combine information from date variable and from hour of posting - to allow for the ordering of observations from the same date!
+
+You will need the lubridate package for this!
+
+
+
+```{r}
+
+mytime<-paste0(FBook$Post.Hour,":00")
+# https://lubridate.tidyverse.org/reference/with_tz.html
+# https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+
+FBook$date_time <- lubridate::dmy_hm(paste(FBook$date, mytime),tz = "Europe/Lisbon")
+# puts it as Lisbon time (specified timezone)
+# consider how to handle timezones! 
+
+```
+
+
+```{r}
+
+ggplot(FBook,aes(date_time,Total.Interactions, colour=Type))+geom_point()+ylab("Total Interactions")+xlab("Date")+theme_bw()
+```
+
