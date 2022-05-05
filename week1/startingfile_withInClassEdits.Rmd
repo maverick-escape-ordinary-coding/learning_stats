@@ -1,0 +1,67 @@
+---
+title: "Exploring Gapminder data"
+author: " "
+date: "Week 1: Statistical Inference"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(
+  warning = FALSE,   # avoid warnings and messages in the output
+  message = FALSE,
+  fig.height = .8 * 5,
+  fig.width = .8 * 7,
+  tidy.opts=list(width.cutoff = 120),  # For code
+  options(width = 120)                 # for output
+)
+unlist(knitr::opts_chunk$get(c("fig.height", "fig.width")))
+
+```
+
+___Tech note___: Here is a way to make a script more portable by testing whether a package is available before installing it.
+
+
+
+
+```{r packages}
+if(!require(ggplot2)){install.packages("ggplot2")}
+library(ggplot2)
+if(!require(dplyr)){install.packages("dplyr")}
+library(dplyr)
+if(!require(scales)){install.packages("scales")}
+library(scales)
+if(!require(gapminder)){install.packages("gapminder")}
+library(gapminder)
+```
+
+What variables are available, and what are their names? str() is your friend here.
+
+```{r}
+str(gapminder)
+```
+
+___Tech note___: The gapminder data set was constructed as a tibble, a generalization of a data.frame. The print() method gives an abbreviated printout. Normally, you would use head(gapminder) for this.
+
+
+```{r}
+gapminder
+```
+
+
+```{r barplot1}
+ggplot(gapminder, aes(x=continent)) + geom_bar()
+```
+
+```{r barplot2}
+barplot(table(gapminder$continent))
+```
+
+
+```{r}
+gap2007<-gapminder[gapminder$year=="2007",]
+boxplot(gap2007$lifeExp~gap2007$continent)
+```
+
+
+

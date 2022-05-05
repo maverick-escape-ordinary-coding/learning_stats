@@ -1,0 +1,339 @@
+---
+title: "Exploratory Data Analysis for finding errors - metadata and good data management"
+author: "Paul Hewson"
+date: "02/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(RSQLite)
+library(summarytools)
+library(ggplot2)
+library(assertr)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+Exercise 4 Write expectations for the Health Survey for England 2011 teaching dataset
+--------------------------------------------------------------------------------------
+
+1. Define sensible and realistic expectations for the variables of interest in the Health Survey for England 2011 teaching dataset
+2. Implement these Expectations using `assertr`
+
+nb. When writing these expectations, decide whether you want to modify the query to only import data for adults
+
+
+## Overview
+
+By now, we hope you are getting used to the idea that exploratory data analysis requires judgement.  It is up to you to decide which techniques are appropriate in any given context.  The "solutions" below are only suggestions.   Feel free to disagree.
+
+
+
+## Initial exploratory data analysis, for the analysts benefit
+
+It's very likely that these are stages you would do informally, certainly using an R script in the manner of a Python notebook, but perhaps not with a view to immediately constructing a full .Rmd document.
+
+
+The first thing I need to do is to pull the data into R.
+
+
+```{r obtain_adults}
+con <- dbConnect(RSQLite::SQLite(), "hsfe.db")
+res <- dbSendQuery(con, "SELECT Age, Sex, omdiaval, omsysval, bmival, econact
+                   FROM hse2011_teaching
+                   WHERE Age >= 18")
+hse_adult <- dbFetch(res)
+dbClearResult(res)
+dbDisconnect(con)
+```
+
+Obtaining the data has involved a judgement.  I have used my query to extract rows for adults only. 
+- Advantages: I bring a smaller dataset into R, containing only the information I need. Sometimes, this may be a necessity.
+- Disadvantages: I can't compare the summary information directly with the user manual, because the user manual describes the entire dataset.  So the question is, what quality processes assure me that the database contents are correct?   Do they belong in an R script, in every analysis I do, or where?
+
+
+
+
+## First step: Some personal EDA
+
+
+The idea of the first stages is really "personal" EDA, by way of starting to understand the dataset.  I have set `eval=FALSE` in many of these code chunks because they really belong in an interactive R session and not in an `.Rmd` script.  However, you can execute them from the `.Rmd` using Ctrl+Enter (or Cmd+Enter).  They won't execute when you `knit` the document
+
+```{r dfsummary_1, eval=FALSE}
+view(dfSummary(hse_adult))
+```
+
+This gives me an instant overview of my data.  Along with some ideas as to potentially useful EDA.
+
+### Sex
+
+If I'm using the adult only data, there are no missing values for Sex, the only values I see are 1 or 2.  On the whole dataset, I would need to run this line to recode missing values for sex, on the adult only subset here I don't need to.
+
+```{r recode_sex_na, eval=FALSE}
+hse_adult$Sex[hse_adult$Sex == -9 | hse_adult$Sex == -8] <- NA
+```
+
+However, the next step is necessary.  We need to label values 1 and 2 in the Sex column as Male and Female.  I need to check the user manual to be able to do this, to reassure myself that 1 = Male and 2 = Female.
+
+```{r code_sex}
+hse_adult$Sex <- factor(hse_adult$Sex, labels=c("Male", "Female"))
+```
+I can examine the effect of this change by re-running `dfSummary()`
+
+
+```{r dfsummary_2, eval=FALSE}
+view(dfSummary(hse_adult))
+```
+
+### Systolic and Diastolic blood pressure
+
+The documentation for the HSfE Teaching Dataset 2011 isn't very clear about missing value codings. But if I run `ftable()` on the `omdiaval` column I can see entries of -8, -7 and -1.   Note that I used a postcript `[c(1:10)]` to select only the first ten entries.  It does say somewhere in the user guide that negative integers are often used to different different types of missing values.
+
+```{r table}
+table(hse_adult$omdiaval)[c(1:10)]
+```
+
+
+I can then script something which re-codes missing values as NA.
+
+```{r recode_missing_diastolic}
+hse_adult$omdiaval[hse_adult$omdiaval == -8 | hse_adult$omdiaval == -7 |       hse_adult$omdiaval == -1] <- NA
+```
+
+And again, running manually I can check to see what difference this makes to my "instant" 1d EDA:
+
+```{r dfsummary_3, eval=FALSE}
+view(dfSummary(hse_adult))
+```
+
+### Econact
+
+I can guess the missing values for `econact`, but I'm not sure the user guide really provides me enough information.  It does tell me that it is a **Derived** variable. In other words, no-one was asked in the survey what their `econact` was.  They answered a number of different questions, and Natcen, the company that runs the Health Survey for England, created a derived variable from these answers called `econact`.  So we have to bear in mind that we have no control of the quality of that process.  If I do some searching, I can obtain the `econact` codings for 2009, and we can use these.
+
+<https://discover.ukdataservice.ac.uk//variables/variable/?id=6732_V54>
+
+```{r econact_recode_na_and_label}
+hse_adult$econact[hse_adult$econact == -9 | hse_adult$econact == -8 | hse_adult$econact == -1] <- NA
+hse_adult$econact <- factor(hse_adult$econact, labels=c("In employment", "ILO unemployed", "Retired", "Other economically inactive"))
+```
+
+And again I can do my instant 1d EDA.  There are small numbers of unemployed people relative to employed.  I could check whether the retired people have the right age.  But this coding looks plausible.
+
+```{r dfsummary_4, eval=FALSE}
+view(dfSummary(hse_adult))
+```
+
+
+### BMI
+
+Perhaps the last variable I need to recode for missing values is the BMI (Body Mass Index).  This is based on self-completed measurements (height and weight), and so there is only one missing value code, -1. We recode this as NA.
+
+```{r recode_missing_bmival}
+hse_adult$bmival[hse_adult$bmival == -1] <- NA
+```
+
+And again, we can check our instant EDA.
+
+
+```{r dfsummary_5, eval=FALSE}
+view(dfSummary(hse_adult))
+```
+
+
+### Data preparation script
+
+Having bludgeoned my way through this data preparation, maybe I can make things a little more efficient.  I am going to write a function that handles the missing value recoding (maybe if I looked harder on CRAN I could find a good package where someone has already done that).   I need to supply the column of data, and a vector of missing data values.
+
+```{r recode_function}
+recode_na <- function(column, na_vals){
+column[column %in% na_vals] <- NA
+return(column)
+}
+
+hse_adult$omsysval <- recode_na(hse_adult$omsysval, c(-8, -7, -1))
+```
+
+And then maybe I want to keep my entire data-preparation script in an `.R` file of it's own. This could be version controlled, shared with colleagues, peer-reviewed by colleagues and so on. I could re-use it next year when I'm working with another year's Health Survey for England.
+
+```{r data_prep_script}
+con <- dbConnect(RSQLite::SQLite(), "hsfe.db")
+res <- dbSendQuery(con, "SELECT Age, Sex, omdiaval, omsysval, bmival, econact
+                   FROM hse2011_teaching
+                   WHERE Age >= 18")
+hse_adult <- dbFetch(res)
+dbClearResult(res)
+dbDisconnect(con)
+
+# Recode missing value integers as NA
+hse_adult$omsysval <- recode_na(hse_adult$omsysval, c(-8, -7, -1))
+hse_adult$bmival <- recode_na(hse_adult$bmival, c(-8, -7, -1))
+hse_adult$econact <- recode_na(hse_adult$econact, c(-9, -8, -1))
+# Code factor levels
+hse_adult$Sex <- factor(hse_adult$Sex, 
+                        labels=c("Male", "Female"))
+hse_adult$econact <- factor(hse_adult$econact, 
+                            labels=c("In employment", "ILO unemployed", 
+                                     "Retired", "Other economically inactive"))
+```
+
+
+## Analysis for a healthcare professional's benefit
+
+Now that we have the metadata coded into our data, missing values coded correctly, and have dealt with any other issues that emerged, we can consider the kind of analysis we may wish to share with others.   The first is an example of something we may do in conjunction with healthcare professionals (subject matter experts)
+
+### Start with Systolic Blood Pressure
+
+I'm worried that there may be a rounding bias in the blood pressure. I've been to a doctor, they put a band on my arm, listen to a stethescope and read off a dial.  So initially, I'm going to use a binwidth that is far too fine.
+
+```{r systolic}
+hse_adult %>%
+  ggplot(aes(x=omsysval))+
+  geom_histogram(binwidth = 1)
+```
+
+What I'm looking for is evidence of rounding bias (for example data being recorded to the nearest 5 or 10 mmHg).   Next I checking with a table, I'm reassured there is no rounding bias.
+
+```
+table(hse_adult$omsysval)[c(101:120)]
+```
+
+At this point, the healthcare professional tells me I needn't have worried.  OMRON is an electronic device, which measures to tenths of a mmHg. There should be no rounding bias in my data.
+
+
+### Analysis for a wider audience
+
+Now I'm happy with the data, I can produce a production quality histogram.
+
+
+```{r systolic_formal}
+hse_adult %>%
+  ggplot(aes(x=omsysval))+
+  geom_histogram(binwidth = 10) + 
+  labs(title = "Systolic Blood Pressure (mmHg)",
+       subtitle = "OMRON",
+       caption = "Health Survey for England 2011 Teaching Dataset",
+       tag = "Figure 1") + 
+  xlab("mmHg") + 
+  ylab("Count") + 
+  theme_bw()
+```
+
+
+Reproducible or routine reports and assertions
+------------------------------------------------
+
+
+The Health Survey for England runs annually.  Someone therefore has to produce a report annually.  The beauty of a reproducible report is that we should be able to create an analysis script that can run on next years data.  But what if something changes unexpectedly.
+
+
+
+## A convenience function
+
+I'm going to write my own function to count the proportion of NAs. The Health Survey for England is a complex survey. All the respondents fill in a self-reporting form. However, about a third of them have additional information completed by a nurse, such as the blood pressure measurements.  We expect a lot of NAs because blood pressure is only recorded for this nurse visit subset.   In order to use `assertr` I'm going to write a small convenience function that estimates the proportion of NAs.
+
+```{r na_counter}
+na_proportion <- function(x){
+  return(sum(is.na(x)) / length(x))
+  }
+```
+
+
+I can now write an `assertr` pipeline which first verifies the data before producing the boxplot.
+
+
+```{r verify_and_boxplot_sys}
+hse_adult %>% 
+  verify(has_all_names("Age", "Sex", "omdiaval", "omsysval")) %>%
+  verify((omsysval > 60 & omsysval < 250) | is.na(omsysval)) %>%
+  verify(na_proportion(omsysval) > 0.35) %>%
+  ggplot(aes(Sex, omsysval)) + 
+  geom_boxplot() + 
+  labs(title = "Systolic Blood Pressure (mmHg) by sex",
+       subtitle = "OMRON",
+       caption = "Health Survey for England 2011 Teaching Dataset",
+       tag = "Figure 2") + 
+  xlab("mmHg") + 
+  ylab("Count") + 
+  theme_bw()
+
+```
+
+
+Now, I'm on  roll. Let's copy and paste and run this for systolic blood pressure.
+
+
+
+```{r verify_and_boxplot_dia, eval=FALSE}
+hse_adult %>% 
+  verify(has_all_names("Age", "Sex", "omdiaval", "omsysval")) %>%
+  verify((omdiaval > 30 & omdiaval < 150) | is.na(omdiaval)) %>%
+  verify(na_proportion(omdiaval) > 0.35) %>%
+  ggplot(aes(Sex, omdiaval)) + 
+  geom_boxplot()
+```
+
+However, I have a failure. As I'm in a hurry and feel familiar with this dataset, I just remove the `assertr` from the pipeline.
+
+
+```{r boxplot_diaval_no_verification}
+hse_adult %>% 
+  ggplot(aes(Sex, omdiaval)) + 
+  geom_boxplot()
+```
+
+Hopefully I noticed that before I issued the report. I am reporting people with negative blood pressure   I forgot to recode the missing values for systolic blood pressure.  I should go back and add `hse_adult$omdiaval <- recode_na(hse_adult$omdiaval, c(-8, -7, -1))` to my preparation script.  However, for now, let's apply the recoding here and carry on.
+
+
+```{r recode_diaval}
+hse_adult$omdiaval <- recode_na(hse_adult$omdiaval, c(-8, -7, -1))
+
+hse_adult %>% 
+  verify(has_all_names("Age", "Sex", "omdiaval", "omsysval")) %>%
+  verify((omdiaval > 30 & omdiaval < 150) | is.na(omdiaval)) %>%
+  verify(na_proportion(omdiaval) > 0.35) %>%
+  ggplot(aes(Sex, omdiaval)) + 
+  geom_boxplot() + 
+  labs(title = "Diastolic Blood Pressure (mmHg) by sex",
+       subtitle = "OMRON",
+       caption = "Health Survey for England 2011 Teaching Dataset",
+       tag = "Figure 3") + 
+  xlab("mmHg") + 
+  ylab("Count") + 
+  theme_bw()
+```
+
+### A scatterplot
+
+I'm now moving beyond one dimensional EDA.  Specifically, I want to look at the relationship between BMI and systolic blood pressure.
+
+You may have heard in the UK news about a man whose height had been recorded as 6.2cm, which gave him an extremely high BMI. As a result, he was called for a Covid vaccine much earlier than he should have been <https://www.bbc.co.uk/news/uk-england-merseyside-56111209>  The use of Expectations is meant to help us avoid these kinds of errors.
+
+```{r verify_and_scatter_bmi_sysval}
+hse_adult %>% 
+  verify(has_all_names("Age", "Sex", "omdiaval", "omsysval")) %>%
+  verify((bmival > 10 & bmival < 70) | is.na(bmival)) %>%
+  verify(na_proportion(bmival) < 0.2) %>%
+  ggplot(aes(x=bmival, y=omsysval)) + 
+  geom_point() + 
+  geom_smooth(method=lm) + 
+  labs(title = "BMI against Systolic Blood Pressure (mmHg)",
+       subtitle = "Self-reported and OMRON",
+       caption = "Health Survey for England 2011 Teaching Dataset",
+       tag = "Figure 4") + 
+  xlab(expression(paste("BMI (", kg^2, "/meter)"))) + 
+  ylab("Systolic Blood Pressure (mmHg)") + 
+  theme_bw()
+
+```
+So the interesting question is whether I should have included the expectations for systolic blood pressure here as well as earlier?  Isn't it the responsibility of the database department to run expectations and make sure I only have valid data?  Maybe, but in that case, maybe I need to use expectations to make sure any data manipulation I do doesn't cause problems further down the line.  This is something for you to think about.
+
+
+Exercises
+----------
+
+- Complete the EDA (relationship between Age and BMI, Age and blood pressure, Difference in BMI/blood pressure in groups with different economic activity
+- Carefully consider which elements of EDA are relevant for different audiences
+- Carefully consider how you would use Expectations to quality assure a data analysis.
