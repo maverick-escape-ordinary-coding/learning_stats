@@ -1,0 +1,301 @@
+---
+title: "Exploring Gapminder data"
+author: " "
+date: "Week 1: Statistical Inference"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(
+  warning = FALSE,   # avoid warnings and messages in the output
+  message = FALSE,
+  fig.height = .8 * 5,
+  fig.width = .8 * 7,
+  tidy.opts=list(width.cutoff = 120),  # For code
+  options(width = 120)                 # for output
+)
+unlist(knitr::opts_chunk$get(c("fig.height", "fig.width")))
+
+```
+
+___Tech note___: Here is a way to make a script more portable by testing whether a package is available before installing it.
+
+
+
+
+```{r packages}
+if(!require(ggplot2)){install.packages("ggplot2")}
+library(ggplot2)
+if(!require(dplyr)){install.packages("dplyr")}
+library(dplyr)
+if(!require(scales)){install.packages("scales")}
+library(scales)
+if(!require(gapminder)){install.packages("gapminder")}
+library(gapminder)
+if(!require(gganimate)){install.packages("gganimate")}
+library(gganimate)
+if(!require(gifski)){install.packages("gifski")}
+library(gifski)
+```
+
+What variables are available, and what are their names? str() is your friend here.
+
+```{r}
+str(gapminder)
+```
+
+___Tech note___: The gapminder data set was constructed as a tibble, a generalization of a data.frame. The print() method gives an abbreviated printout. Normally, you would use head(gapminder) for this.
+
+
+```{r}
+gapminder
+```
+
+## Overview
+Normally, when starting with a new data set, it is useful to get some overview of the variables. The simplest one is summary().
+
+```{r}
+summary(gapminder)
+```
+
+We will want to look at trends over time by continent. How many countries are in this data set in each continent? There are 12 years for each country. Are the data complete? table() gives an answer.
+
+```{r}
+table(gapminder$continent, gapminder$year)
+```
+
+
+___Tech note___: table() doesn’t have a data= argument, so you have to qualify the names of variables using data$variable notation. Another way to do this is to use the with() function, that makes variables in a data set available directly. The same table can be obtained using:
+
+```{r}
+with(gapminder, {table(continent, year)})
+```
+
+## 1D plots: Bar plots for discrete variables
+
+Bar plots are often used to visualise the distribution of a discrete variable, like continent. With ggplot2, this is relatively easy:
+
+- map the x variable to continent
+- add a geom_bar() layer, that counts the observations in each category and plots them as bar lengths.
+
+```{r}
+ggplot(gapminder, aes(x=continent)) + geom_bar()
+```
+
+
+To make this (and other plots) more colourful, you can also map the fill attribute to continent.
+
+```{r}
+ggplot(gapminder, aes(x=continent, fill=continent)) + geom_bar()
+```
+
+## Time Series
+
+```{r USApop}
+gapminder %>% 
+  filter(country == "United States") %>% 
+  ggplot(aes(year, pop)) +
+  geom_point()
+```
+
+As a line graph instead
+
+```{r USApopLine}
+gapminder %>% 
+  filter(country == "United States") %>% 
+  ggplot(aes(year, pop)) +
+  geom_line()
+```
+
+
+## 2D: Scatterplots
+Now let’s explore the relationship between life expectancy and GDP with a scatterplot, which was the subject of Rosling’s TED talk. (Actually, he did more than this, with a “moving bubble plot”, using a bubble symbol ~ population, and animating this over time.)
+
+A basic scatterplot is set up by assigning two variables to the x and y aesthetic attributes. The following just creates an empty plot frame.
+
+```{r}
+plt <- ggplot(data=gapminder,
+              aes(x=gdpPercap, y=lifeExp))
+plt
+```
+
+```{r}
+plt+geom_point()
+```
+
+```{r}
+plt + geom_point(aes(colour=continent))
+```
+
+```{r}
+plt + geom_point(aes(colour=continent))+scale_x_log10()
+```
+
+
+
+```{r}
+plt + geom_point(aes(colour=continent))+ scale_x_log10()+geom_smooth(method="lm")
+```
+
+
+```{r}
+plt + geom_point(aes(colour=continent))+geom_smooth(method="lm")+ scale_x_log10()
+```
+
+
+Coordinate transformations
+
+```{r}
+plt + geom_point(aes(colour=continent))+geom_smooth(method="lm")+ coord_trans(x ="log10")
+```
+
+
+
+This image looks odd - what has gone wrong?
+
+```{r}
+plt + geom_point(aes(colour=continent))+ coord_trans(x ="log10")+geom_smooth(method="lm")
+```
+
+Not an issue with ordering - so you can see that coordinate transformation / scaling can really affect your graphs - you need to choose wisely, especially if you are then plotting lines of best fit!
+
+```{r}
+plt + geom_point(aes(colour=continent))+geom_smooth(method="lm")+ scale_x_log10()+coord_trans(x = scales::exp_trans(10))
+```
+
+
+## Time series: multiple countries
+
+Now try to use two countries:
+
+```{r}
+countries <- c("Germany","Ireland")
+
+gapminder %>% filter(country %in% countries) %>% 
+  ggplot(aes(year,pop)) +
+  geom_line()
+```
+
+```{r}
+gapminder %>% filter(country %in% countries) %>% 
+  ggplot(aes(year, pop, group = country)) +
+  geom_line()
+
+```
+
+```{r}
+gapminder %>% filter(country %in% countries) %>% 
+  ggplot(aes(year, pop, col = country)) +
+  geom_line()
+```
+
+
+```{r}
+range(gapminder$pop[gapminder$country%in%countries[1]])
+range(gapminder$pop[gapminder$country%in%countries[2]])
+
+labels <- data.frame(country = countries, x = c(1970,1970),
+       y = c(65000000,10000000))
+```
+
+
+
+```{r}
+gapminder %>% filter(country %in% countries) %>% 
+  ggplot(aes(year, pop, col = country)) +
+  geom_line()+
+  geom_text(data = labels, aes(x, y, label = country), size = 5) 
+```
+
+```{r}
+gapminder %>% filter(country %in% countries) %>% 
+  ggplot(aes(year, pop, col = country)) +
+  geom_line()+
+  geom_text(data = labels, aes(x, y, label = country), size = 5)+
+  theme_bw()+theme(legend.position = "none")
+```
+
+
+```{r}
+loglabels <- data.frame(country = countries, 
+                        x = c(1970,1970),
+                        y = c(65000000,5000000))
+gapminder %>% filter(country %in% countries) %>% 
+  ggplot(aes(year, pop, col = country)) +
+  geom_line()+scale_y_log10()+
+  geom_text(data = loglabels, aes(x, y, label = country), size = 5)+
+  theme_bw()+theme(legend.position = "none")
+```
+
+
+
+# Higher dimensions!
+
+```{r}
+data07 <- gapminder %>% filter(year=="2007") %>% dplyr::select(-year)
+
+data07<-data07 %>%
+  arrange(desc(pop)) %>%
+  mutate(country = factor(country, country))
+```
+
+```{r bubbleplot}
+ggplot(data=data07,aes(x=gdpPercap, y=lifeExp, size = pop)) +
+    geom_point(alpha=0.5) +
+    scale_size(range = c(.1, 24), name="Population (M)")
+```
+
+
+```{r colourfulbubbles}
+ggplot(data=data07,aes(x=gdpPercap, y=lifeExp, size=pop, colour=continent)) +
+    geom_point(alpha=0.5) +
+    scale_size(range = c(.1, 24), name="Population (M)")
+```
+
+
+```{r}
+ggplot(data=data07,aes(x=gdpPercap, y=lifeExp, size=pop, colour=continent)) +
+    geom_point(alpha=0.5) +
+    scale_size(range = c(.1, 24), name="Population (M)")+scale_x_log10()
+
+```
+
+
+
+```{r}
+ggplot(data=data07,aes(x=gdpPercap, y=lifeExp, size=pop, colour=continent)) +
+  geom_point(alpha=0.5) +
+  guides(size=FALSE)+
+  scale_size(range = c(.1, 24), name="Population (M)")+scale_x_log10()
+```
+
+
+```{r test, cache=TRUE}
+library(gganimate)
+theme_set(theme_bw())
+
+p <- ggplot(data =   gapminder, 
+  aes(x = gdpPercap, y=lifeExp, size = pop, colour = country)
+) +
+  geom_point(show.legend = FALSE, alpha = 0.7) +
+  scale_color_viridis_d() +
+  scale_size(range = c(2, 12)) +
+  scale_x_log10() +
+  labs(x = "GDP per capita", y = "Life expectancy")
+p + transition_time(year) +
+  labs(title = "Year: {frame_time}")
+```
+
+```{r fullanimate, cache=TRUE}
+anim = ggplot(gapminder, aes(gdpPercap, lifeExp, size = pop, colour = country)) +
+  geom_point(alpha = 0.7, show.legend = FALSE) +
+  scale_colour_manual(values = country_colors) +
+  scale_size(range = c(2, 12)) +
+  scale_x_log10() +
+  facet_wrap(~continent) +
+  labs(title = 'Year: {frame_time}', x = 'GDP per capita', y = 'life expectancy') +
+  transition_time(year) +
+  ease_aes('linear')
+
+```

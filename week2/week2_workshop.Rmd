@@ -1,0 +1,97 @@
+---
+title: "mtcars"
+author: ""
+date: "Week 2: Statistical Inference"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r cars}
+str(mtcars)
+```
+
+```{r}
+names(mtcars)
+```
+
+In this workshop we will concentrate on using mpg (miles per gallon); cyl (number of cylinders) and hp (horsepower).
+
+Find out about the dataset:
+
+```{r}
+?mtcars
+```
+
+
+Look at the first 6 rows of data using the command **head**
+
+```{r}
+head(mtcars)
+```
+
+Embedding a calculated value into sentences:
+
+The mean mpg for cars in this dataset is `r mean(mtcars$mpg)`.
+
+Edit the statement so that it only prints to 2 decimal places:
+
+The mean mpg for cars in this dataset is `r round(mean(mtcars$mpg),2)`.
+
+What other summary statistics may you wish to report within the text of a document?
+
+
+Create a histogram (using geom_histogram), of miles per gallon and number of cars:
+
+* hint: use +geom_histogram(binwidth=4) *
+
+Try to relabel your x and y axes label and include a title!
+
+```{r}
+library(ggplot2)
+
+ggplot(mtcars, aes(mpg)) + geom_histogram(binwidth=4)
+```
+
+Edit this to show the histogram for the number of cylinders (edit the binwidth to be equal to 1).
+
+```{r}
+
+ggplot(mtcars, aes(cyl)) + geom_histogram(binwidth=1)
+
+```
+
+Would a barplot be more appropriate?
+
+```{r}
+
+ggplot(mtcars,aes(mpg)) + geom_bar()
+```
+
+
+Plot the miles per gallon versus the horsepower of the cars in this dataset.  Add in a linear regression line to this plot.
+
+You will need to identify x and y axes here!
+
+```{r}
+ggplot(mtcars,aes(x = hp, y = mpg)) + geom_point() + geom_smooth(method = 'lm') + theme_bw()
+```
+
+Including standard errors:
+
+```{r}
+
+```
+
+Use the **cor** function to find the linear correlation between the horsepower and mpg of these cars.
+
+```{r}
+cor(mtcars$mpg,mtcars$hp)
+```
+
+How would you report this within your text?
+
+The Pearson correlation between Horsepower and Miles per gallon of these cars is `r cor(mtcars$mpg,mtcars$hp)`
