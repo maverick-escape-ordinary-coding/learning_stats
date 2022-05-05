@@ -1,0 +1,276 @@
+---
+title: "Bootstrapping"
+author: "Deirdre Toher"
+date: "March 2021"
+output:
+  pdf_document: 
+    number_sections: true
+    keep_tex: true
+  html_document: default
+  word_document: default
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+if(!require(RefManageR)){
+    install.packages("RefManageR",repos = "https://www.stats.bris.ac.uk/R/")
+    library(RefManageR)
+}
+
+if(!require(kableExtra)){
+    install.packages("kableExtra",repos = "https://www.stats.bris.ac.uk/R/")
+    library(kableExtra)
+}
+
+if(!require(ggplot2)){
+    install.packages("ggplot2",repos = "https://www.stats.bris.ac.uk/R/")
+    library(ggplot2)
+}
+
+if(!require(dplyr)){
+    install.packages("dplyr",repos = "https://www.stats.bris.ac.uk/R/")
+    library(dplyr)
+}
+```
+
+
+```{r setup2, include=FALSE}
+options(htmltools.dir.version = FALSE)
+#library(RefManageR)
+BibOptions(check.entries = FALSE, bib.style = "authoryear", style = "markdown",
+           dashed = TRUE)
+#file.name <- system.file("references.bib", package = "RefManageR")
+data.file <- paste0(getwd(),"/references.bib")
+#file.name<-system.file(paste0(getwd(),"/references.bib"),package = "RefManageR") 
+#bib <- ReadBib(file.name)
+bib <- ReadBib(data.file)
+```
+
+## Goals:
+
+1. Be able to explain the concept of bootstrapping.
+2. Be able to design and run an empirical bootstrap to compute confidence intervals.
+
+# Introduction to Bootstrap
+
+The "Bootstrap" was a technique developed by Brad Efron in the 1970's. It is a simple concept, but remarkably useful!
+
+He has written a number of different articles about it, a few are: `r Citet(bib, "efron1979computers")`, `r Citet(bib, "efron2000bootstrap")` and `r Citet(bib, "efron2003second")`.
+
+## What is bootstrapping?
+
+Perform computations on the data itself to estimate the variation of statistics. We do this by imagining that our sample of data is actually the entire population that we sample **with replacement** from. 
+
+An important application of the bootstrap is to estimate the variation of point estimates - i.e. to estimate confidence intervals. It is particularly useful when the data comes from a distribution that isn't "nice".
+
+## Confidence Intervals
+
+Previously, we saw that a confidence interval for the mean of a normal distribution could be approximated as
+
+$$\bar{x}\pm 2\times SE(\bar{x}) = \bar{x}\pm 2 \times \frac{\sigma}{\sqrt{n}}$$
+
+If we are looking for a more formal 95% Confidence Interval - assuming that our data are normally distributed (not particularly valid in a lot of data science applications), then we could claim, if the variance is known:
+
+$$\bar{x}\pm 1.96 \times \frac{\sigma}{\sqrt{n}}$$
+
+This is because 95% of the area under a standard normal distribution (that is a normal distribution with mean 0 and variance 1) lies between $-1.96$ and $+1.96$, which is often approximated by $\pm 2$.
+
+If the variance is also estimated from the data, we should use a t-distribution instead.
+
+The confidence interval in that case then requires us to look up values from the t-distribution with the appropriate degrees-of-freedom (for the mean of a distribution, this would be $n-1$). 
+
+Why $n-1$ degrees of freedom? Where do we "loose" a degree of freedom? Well, the calculation of the sample standard deviation requires the mean of the data $\bar{x}$.  
+
+$$s = \sqrt{\frac{\sum_{i=1}^{n}\left(x_{i}-\bar{x}\right)^2}{n-1}}$$
+
+However, if you know $\bar{x}$, $n$ and the first $n-1$ of your observations, then you could work out what the final observation would be as
+
+$$x_{n} = n\bar{x}-\sum_{i=1}^{n-1}x_{i}$$ 
+
+As the sample size increases, so does the degrees of freedom of the t-distribution.  The greater the degrees of freedom, the more the t-distribution becomes shaped like a normal distribution (see the graph below).
+
+```{r}
+par(mar = c(5.1,4.1, 2, 2)) # reduce the top and right margins to reduce dead space in the graph.
+plot(function(x) dnorm(x, mean=0, sd=1), -5, 5,lwd=2,ylab="f(x)",las=1,ylim=c(0,.4))
+curve(dt(x,df=20), add = TRUE, col = "red", lwd = 2)
+curve(dt(x,df=4), add = TRUE, col = "blue", lwd = 2)
+
+legend("topleft",
+       legend=c("N(0,1)","t df=20", "t df=4"),
+       lwd=2, col=c("black","red","blue"))
+```
+
+
+# Sampling
+
+Before we delve too much into bootstrapping, we need to think about sampling.
+
+Suppose you are working with a standard deck of 52 playing cards.
+
+## Sampling without replacement
+
+Suppose you draw 10 cards at random from a deck of 52 cards without putting any of the cards back into the deck. This is **sampling without replacement**
+
+We will have no duplicates in this sample. The probability of drawing a red card as the tenth card will depend on how many red cards and black cards you have already drawn.
+
+## Sampling with replacement
+
+Now suppose we draw 10 cards at random from the deck, but after each draw we put the card back in the deck and shuffle the cards.
+
+This is called sampling with replacement. With
+this method, the 10 card sample might have duplicates. 
+
+It is even possible that we would
+draw the 6 of hearts all 10 times - however the probability of this happening if you are sampling at random is very small!
+
+Another example that is essentially sampling with replacement is rolling dice! What you roll on one throw will not affect the probability of rolling the same number the next time.
+
+If we have a sufficiently large population, even if we sample with replacement, it is so unlikely that we would get the same person twice if sampling with replacement that there is no real practical difference between sampling with or without replacement.
+
+
+# Bootstrapping
+
+The essential concept behind bootstrapping is that you imagine that your sample of data is actually the population.
+
+You then randomly sample **with replacement** from your data and calculate the test statistic.
+
+You repeat this many times, summarising the results.
+
+## Example
+
+We will simulate data based on two Poisson distributions (illustrated below)
+
+```{r}
+ggplot(transform(data.frame(x=c(0:20)), y=dpois(x, 4)), aes(x, y)) + 
+  geom_bar(stat="identity")+ylab("f(x)")+
+  ggtitle("Poisson (4)")+theme_bw()
+```
+
+```{r}
+ggplot(transform(data.frame(x=c(0:20)), y=dpois(x, 9)), aes(x, y)) + 
+  geom_bar(stat="identity")+ylab("f(x)")+
+  ggtitle("Poisson (9)")+theme_bw()
+```
+
+The Poisson distribution is used to model count data.
+
+To generate data, we simulate 40 observations from a Poisson(4) and another 40 from a Poisson(9). We then sample 20 of these to create our working dataset. Our observations are equally likely to come from the Poisson(4) and Poisson(9) distributions.
+
+```{r}
+set.seed(646)
+x1<-rpois(40,lambda = 4)
+x2<-rpois(40,lambda = 9)
+x_population<-c(x1,x2)
+x<-sample(x_population,20,replace=FALSE)
+mydata<-data.frame(x=x)
+```
+
+Our true population would have the following distribution:
+
+```{r}
+XP<-data.frame(x=x_population)
+ggplot(XP, aes(x=x)) + 
+  geom_histogram(aes(y = ..density..),binwidth = 1)+
+  ggtitle("True Population distribution")+
+  theme_bw()
+```
+
+
+If we had access to the entire "population" in this instance, then we would know that the population mean is `r mean(x_population)`, however the sample that we are working with is:
+
+```{r}
+dt<-table(mydata$x)
+dt1<-as.matrix(dt)
+colnames(dt1)<-"count"
+kbl(t(dt1),booktabs = TRUE)
+```
+
+Now suppose that the data currently stored in the dataframe "mydata" (the variable called "x") are the only available data that you have to work with!
+
+```{r}
+ggplot(mydata, aes(x=x)) + 
+  geom_histogram(binwidth = 1)+
+  ggtitle("Sample data")+
+  theme_bw()
+```
+
+Your sample size is relatively small and as your data are all integers, any assumption of being approximated by a normal (or even a t) distribution is questionable.
+
+The mean of the sample is `r mean(mydata$x)` based on n=`r length(mydata$x)` observations.
+
+```{r}
+set.seed(547)
+n<-length(mydata$x)
+x_temp<-sample(mydata$x,n,replace=TRUE)
+mean(x_temp)
+```
+
+Here we have sampled **with replacement** to find another estimate of the mean as `r mean(x_temp)`. What we now wish to do is to repeat this process **many** times, storing our estimates of the mean each time.
+
+The easiest way to do this in R is using a loop. However, make sure that you set up the vector where you will store your estimates of the mean outside of the loop -- do not "grow" your vector inside the loop as this can **really** slow down your calculations.
+
+```{r}
+Nrepeats<-1000 # start small, then alter once your code is tested
+bootstrap_means<-rep(NA,Nrepeats) # create an empty vector to store your means in
+set.seed(547) # set a seed so that your results are replicable.
+for(i in seq_len(Nrepeats)){ # a loop from 1 to Nrepeats
+  x_temp<-sample(mydata$x,n,replace=TRUE) # sample n values with replacement
+  bootstrap_means[i]<-mean(x_temp) # find the mean of this "temporary" dataset and store it
+}
+B.means<-data.frame(b_means=bootstrap_means)
+ggplot(B.means, aes(x=b_means)) + 
+  geom_histogram(aes(y = ..density..),binwidth = .1)+
+  ggtitle("Bootstrapped Means")+
+  theme_bw()
+```
+
+
+To find approximate confidence intervals, we would then sort our data and have two cut-points. For a 95% confidence interval, these cut-points would be at the 2.5 percentile (for 1000 bootstrapped samples this the 25th lowest bootstapped sample mean) and at the 97.5 percentile.
+
+Or, we can just get R to evaluate them for us!
+
+```{r}
+quantile(bootstrap_means,c(.025,0.975))
+```
+
+Does this interval contain the true (usually unknown unless, as is the case here, we are simulating data) population mean `r mean(x_population)`?
+
+Suppose instead, we were interested in estimating the variance of our data rather than the mean?
+
+```{r}
+bootstrap_variance<-rep(NA,Nrepeats) # create an empty vector to store your means in
+set.seed(547) # set a seed so that your results are replicable.
+for(i in seq_len(Nrepeats)){ # a loop from 1 to Nrepeats
+  x_temp<-sample(mydata$x,n,replace=TRUE) # sample n values with replacement
+  bootstrap_variance[i]<-var(x_temp)
+}
+B.var<-data.frame(b_var=bootstrap_variance)
+ggplot(B.var, aes(x=b_var)) + 
+  geom_histogram(aes(y = ..density..),binwidth = .5)+
+  ggtitle("Bootstrapped Variances")+
+  theme_bw()
+```
+
+```{r}
+quantile(bootstrap_variance,c(.025,0.975))
+```
+
+Does this interval contain the true (usually unknown unless, as is the case here, we are simulating data) population variance `r var(x_population)`?
+
+The advantage of this method of estimating a confidence interval is that it does not make assumptions about the distribution of your data.
+
+
+
+However, bootstrapping as an approach is not suitable for all test statistics.  For example, if you were interested in either the maximum or the minimum of your data, then it would not be appropriate. In general, statistical estimation around extreme values is very difficult and is often a very specialised area of application.
+
+An example of this would be modelling the maximum expected height of waves in the North Sea - which is of interest for safety reasons to those operating offshore oil and gas platforms. 
+The Royal Statistical Society has awarded the Greenfield Industrial Medal this year to Philip Jonathan for his work on Extreme Value theory in ocean engineering.
+
+**References:**
+
+```{r, results='asis', echo=FALSE}
+PrintBibliography(bib)
+```
+
